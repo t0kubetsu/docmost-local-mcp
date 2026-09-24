@@ -351,3 +351,48 @@ fn row_appended_after_a_header_row_is_a_body_row() {
             .all(|cell| cell["type"] == "tableCell")
     );
 }
+
+use docmost_local_mcp::prosemirror::stored_matches_sent;
+
+/// Measured 2026-09-24: the server stores new nodes with default attrs the writer never sets.
+#[test]
+fn stored_copy_with_server_defaults_matches_what_was_sent() {
+    let sent = json!({ "type": "doc", "content": [
+        { "type": "heading", "attrs": { "level": 3 }, "content": [plain("IDR-025")] },
+        { "type": "paragraph", "content": [
+            text("Taiga", json!([{ "type": "link", "attrs": { "href": "https://x.test/1" } }])),
+            text("bold", json!([{ "type": "bold" }])),
+        ]},
+    ]});
+    let stored = json!({ "type": "doc", "content": [
+        { "type": "heading", "attrs": { "level": 3, "indent": 0 }, "content": [plain("IDR-025")] },
+        { "type": "paragraph", "attrs": { "indent": 0 }, "content": [
+            text("Taiga", json!([{ "type": "link", "attrs": { "href": "https://x.test/1", "target": "_blank",
+                "rel": "noopener noreferrer nofollow", "class": null, "title": null, "internal": false } }])),
+            text("bold", json!([{ "type": "bold", "attrs": {} }])),
+        ]},
+    ]});
+    assert!(stored_matches_sent(&sent, &stored));
+
+    let mut changed_text = stored.clone();
+    changed_text["content"][1]["content"][1]["text"] = json!("bolder");
+    assert!(!stored_matches_sent(&sent, &changed_text));
+
+    let mut changed_attr = stored.clone();
+    changed_attr["content"][0]["attrs"]["level"] = json!(2);
+    assert!(!stored_matches_sent(&sent, &changed_attr));
+
+    let mut extra_block = stored.clone();
+    extra_block["content"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, json!({ "type": "paragraph", "attrs": { "indent": 0 } }));
+    assert!(
+        !stored_matches_sent(&sent, &extra_block),
+        "an editor's empty paragraph must be reported"
+    );
+
+    let mut dropped_mark = stored.clone();
+    dropped_mark["content"][1]["content"][1]["marks"] = json!([]);
+    assert!(!stored_matches_sent(&sent, &dropped_mark));
+}

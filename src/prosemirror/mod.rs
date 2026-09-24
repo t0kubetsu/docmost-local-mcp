@@ -11,6 +11,6 @@ mod nodes;
 mod reader;
 mod writer;
 
-pub use edit::{EditChange, EditOutcome, apply_edits};
+pub use edit::{EditChange, EditOutcome, apply_edits, stored_matches_sent};
 pub use reader::prosemirror_to_markdown;
 pub use writer::markdown_to_prosemirror;

@@ -616,3 +616,40 @@ fn children(node: &Value) -> &[Value] {
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
+
+/// Whether the stored document is what was sent, allowing only the `attrs` keys the server
+/// adds as defaults (measured: block `indent`, link `rel`/`target`/…, empty mark `attrs`).
+/// Every text, type, mark, child and attr value that was sent must be equal.
+pub fn stored_matches_sent(sent: &Value, stored: &Value) -> bool {
+    match (sent, stored) {
+        (Value::Object(sent), Value::Object(stored)) => {
+            let attrs_ok = match (sent.get("attrs"), stored.get("attrs")) {
+                (Some(Value::Object(a)), Some(Value::Object(b))) => a
+                    .iter()
+                    .all(|(key, value)| b.get(key).is_some_and(|v| stored_matches_sent(value, v))),
+                (None, Some(Value::Object(_)) | None) => true,
+                (a, b) => a == b,
+            };
+            attrs_ok
+                && sent.len()
+                    + usize::from(!sent.contains_key("attrs") && stored.contains_key("attrs"))
+                    == stored.len()
+                && sent
+                    .iter()
+                    .filter(|(key, _)| *key != "attrs")
+                    .all(|(key, value)| {
+                        stored
+                            .get(key)
+                            .is_some_and(|v| stored_matches_sent(value, v))
+                    })
+        }
+        (Value::Array(sent), Value::Array(stored)) => {
+            sent.len() == stored.len()
+                && sent
+                    .iter()
+                    .zip(stored)
+                    .all(|(a, b)| stored_matches_sent(a, b))
+        }
+        _ => sent == stored,
+    }
+}

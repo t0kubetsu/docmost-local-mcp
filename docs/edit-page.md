@@ -54,7 +54,10 @@ Rules the transform enforces:
    unchanged top-level blocks, and the page's `updatedAt`.
 2. Call again with `dry_run: false` and `expected_updated_at` set to that value. The write is
    refused if `updatedAt` changed. A write without `expected_updated_at` is refused.
-3. After the write the page is re-fetched and compared with the document that was sent.
+3. After the write the page is re-fetched and compared with the document that was sent. The
+   server adds default attributes to new nodes (block `indent`, link `rel`/`target`/`class`/
+   `title`/`internal`, an empty mark `attrs`); the comparison accepts extra `attrs` keys only,
+   so any other difference (text, marks, an added block) is reported as a warning.
 
 How the write reaches the page (Docmost source, v0.95.0,
 `collaboration/collaboration.handler.ts`): `POST /api/pages/update` with

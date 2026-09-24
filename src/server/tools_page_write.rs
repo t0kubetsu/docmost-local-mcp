@@ -7,7 +7,7 @@
 use rmcp::{handler::server::wrapper::Parameters, model::ErrorData, tool, tool_router};
 
 use crate::{
-    prosemirror::{apply_edits, markdown_to_prosemirror},
+    prosemirror::{apply_edits, markdown_to_prosemirror, stored_matches_sent},
     server::{
         DocmostMcpServer, internal_error,
         render::{format_created_page, format_edit_outcome, format_updated_page},
@@ -191,12 +191,16 @@ impl DocmostMcpServer {
             .get_page(page_id)
             .await
             .map_err(internal_error)?;
-        let matches = stored.and_then(|p| p.content).as_ref() == Some(&outcome.doc);
+        let matches = stored
+            .and_then(|p| p.content)
+            .is_some_and(|content| stored_matches_sent(&outcome.doc, &content));
         output.push_str(if matches {
-            "\n\nVerified: the stored content equals the document that was sent."
+            "\n\nVerified: the stored content equals the document that was sent (apart from \
+             default attributes the server adds to new nodes)."
         } else {
-            "\n\nNote: the stored content differs from the document that was sent (the server \
-             may normalise attributes, or store it with a delay). Re-fetch the page to check."
+            "\n\nWarning: the stored content differs from the document that was sent: \
+             someone else changed the page, or an open editor added a block. Re-fetch the page \
+             and check it."
         });
         // Measured 2026-09-24 against a live Docmost instance: an editor that has the page open inserts an
         // empty paragraph at the top a few seconds after a REST replace.
