@@ -396,3 +396,26 @@ fn stored_copy_with_server_defaults_matches_what_was_sent() {
     dropped_mark["content"][1]["content"][1]["marks"] = json!([]);
     assert!(!stored_matches_sent(&sent, &dropped_mark));
 }
+
+#[test]
+fn whole_row_replaced_by_nothing_is_deleted() {
+    let before = page();
+    let outcome = apply_edits(
+        &before,
+        &ops(json!([
+            { "op": "replace_text", "find": "| 0.26 | 2026-09-20 | Older |", "replace": "" }
+        ])),
+    )
+    .unwrap();
+    let (old, new) = (
+        &block(&before, 4)["content"],
+        &block(&outcome.doc, 4)["content"],
+    );
+    assert_eq!(new.as_array().unwrap().len(), 2);
+    assert_eq!(new[0], old[0]);
+    assert_eq!(new[1], old[2]);
+    let detach = apply_edits(&before, &ops(json!([
+        { "op": "replace_text", "find": "| 0.27 | 2026-09-23 | on password change |", "replace": "" }
+    ]))).unwrap();
+    assert_eq!(detach.detached_comments, vec!["c2".to_string()]);
+}

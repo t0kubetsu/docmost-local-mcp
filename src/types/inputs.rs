@@ -237,7 +237,7 @@ pub enum EditOperation {
         )]
         find: String,
         #[schemars(
-            description = "Inline Markdown that replaces it (one or more table rows when `find` \
+            description = "Inline Markdown that replaces it (one or more table rows, or empty to delete the row, when `find` \
             is a row). Marks that cover the whole match but are not part of `find` are kept."
         )]
         replace: String,

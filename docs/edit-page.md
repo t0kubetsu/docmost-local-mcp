@@ -25,7 +25,7 @@ each to the result of the previous one. If any operation does not apply, nothing
 
 | `op` | Fields | Effect |
 |---|---|---|
-| `replace_text` | `find`, `replace` | Replace a span inside one block (paragraph, heading, code block, table cell), or a whole table row given as `\| a \| b \|`. |
+| `replace_text` | `find`, `replace` | Replace a span inside one block (paragraph, heading, code block, table cell), or a whole table row given as `\| a \| b \|` (an empty `replace` deletes the row). |
 | `insert_blocks` | `anchor`, `position` (`before`/`after`), `markdown` | Insert Markdown blocks next to the top-level block that contains `anchor`. |
 | `append_table_row` | `anchor`, `row` | Insert rows (one per line) after the table row that contains `anchor`. |
 
@@ -44,6 +44,8 @@ Rules the transform enforces:
   Markdown is unchanged is kept as is, marks included. Further rows, and appended rows, get
   fresh cells with the template cell's type and attrs. A comment mark is never copied. A row
   appended after a header row gets `tableCell` cells.
+- **A hard line break is `\n` in `find`.** Inside a table row, `get_page` shows it as a space;
+  a `find` inside one cell must use `\n`.
 - **Code blocks take `replace` literally**, with no Markdown parsing.
 - `insert_blocks` anchors match only the top-level block's rendering; text inside a callout
   (which the reader does not render) cannot be an anchor.

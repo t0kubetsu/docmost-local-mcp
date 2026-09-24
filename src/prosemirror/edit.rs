@@ -110,7 +110,12 @@ fn replace_text(doc: &mut Value, find: &str, replace: &str) -> Result<EditChange
 
     if let Some(pointer) = row_hits.pop() {
         let row = doc.pointer(&pointer).cloned().unwrap_or(Value::Null);
-        let rows = build_rows(&row, replace, false)?;
+        // An empty replacement deletes the row.
+        let rows = if replace.trim().is_empty() {
+            Vec::new()
+        } else {
+            build_rows(&row, replace, false)?
+        };
         let after = rows.iter().map(row_markdown).collect::<Vec<_>>().join("\n");
         splice_sibling(doc, &pointer, 0, rows);
         return Ok(EditChange {
