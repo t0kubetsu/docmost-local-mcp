@@ -261,6 +261,15 @@ pub enum EditOperation {
         )]
         row: String,
     },
+    /// Merge adjacent table rows into the first one, on the JSON: the first row's cells are
+    /// kept, and the last cell of every other row is appended to its last cell with one space.
+    MergeTableRows {
+        #[schemars(
+            description = "Two or more exact texts, each found in exactly one table row, for \
+            adjacent rows of one table, in order."
+        )]
+        rows: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema, PartialEq, Eq)]

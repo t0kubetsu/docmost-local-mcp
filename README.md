@@ -46,7 +46,7 @@ If you run your own Docmost and want it available inside Cursor, Claude Desktop,
 - `get_current_user`: fetch the authenticated user and workspace context
 - `create_page`: create a new page in a space from Markdown content
 - `update_page`: update an existing page's title and/or Markdown content
-- `edit_page`: edit part of a page in place (replace a span or row, insert blocks, append table rows) without detaching inline comments; dry run by default
+- `edit_page`: edit part of a page in place (replace a span or row, insert blocks, append or merge table rows) without detaching inline comments; dry run by default
 - `duplicate_page`: duplicate a page (and its sub-pages) within its space
 - `copy_page_to_space`: copy a page (and its sub-pages) into a different space
 - `move_page`: move a page under a new parent page, or to the space root
@@ -294,7 +294,8 @@ Inputs:
 
 - `page_id`: required Docmost page ID or slug ID
 - `operations`: required list; each is `replace_text` (`find`, `replace`), `insert_blocks`
-  (`anchor`, `position`, `markdown`) or `append_table_row` (`anchor`, `row`)
+  (`anchor`, `position`, `markdown`), `append_table_row` (`anchor`, `row`) or
+  `merge_table_rows` (`rows`)
 - `dry_run`: optional, default `true` (returns a diff and the page's `updatedAt`)
 - `expected_updated_at`: required to write; the `updatedAt` a dry run returned
 - `allow_detaching_comments`: optional, default `false`

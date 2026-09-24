@@ -419,3 +419,68 @@ fn whole_row_replaced_by_nothing_is_deleted() {
     ]))).unwrap();
     assert_eq!(detach.detached_comments, vec!["c2".to_string()]);
 }
+
+#[test]
+fn merge_table_rows_joins_last_cells_on_the_json_and_keeps_marks() {
+    let before = page();
+    let outcome = apply_edits(
+        &before,
+        &ops(json!([
+            { "op": "merge_table_rows", "rows": ["| 0.26 |", "| 0.27 |"] }
+        ])),
+    )
+    .unwrap();
+    let (old, new) = (
+        &block(&before, 4)["content"],
+        &block(&outcome.doc, 4)["content"],
+    );
+    assert_eq!(new.as_array().unwrap().len(), 2);
+    let merged = &new[1]["content"];
+    assert_eq!(
+        merged[0], old[1]["content"][0],
+        "first row's cells stay as they are"
+    );
+    assert_eq!(merged[1], old[1]["content"][1]);
+    let inline = &merged[2]["content"][0]["content"];
+    assert_eq!(inline[0], plain("Older"));
+    assert_eq!(inline[1], plain(" "));
+    assert_eq!(
+        inline[2], old[2]["content"][2]["content"][0]["content"][0],
+        "the comment mark moves with its text"
+    );
+    assert!(outcome.detached_comments.is_empty());
+}
+
+#[test]
+fn merge_table_rows_needs_adjacent_rows_of_one_table() {
+    let error = apply_edits(
+        &page(),
+        &ops(json!([
+            { "op": "merge_table_rows", "rows": ["| Version |", "| 0.27 |"] }
+        ])),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("adjacent"), "{error}");
+}
+
+/// Measured 2026-09-24: the server joins adjacent text nodes that carry the same marks.
+#[test]
+fn stored_copy_with_joined_text_nodes_matches_what_was_sent() {
+    let bold = json!([{ "type": "bold" }]);
+    let sent = json!({ "type": "doc", "content": [para(json!([
+        plain("a"), plain(" "), plain("b"), text("c", bold.clone()), text("d", bold.clone()),
+    ]))]});
+    let stored = json!({ "type": "doc", "content": [{ "type": "paragraph", "attrs": { "textAlign": null, "indent": 0 },
+        "content": [plain("a b"), text("cd", json!([{ "type": "bold", "attrs": {} }]))] }]});
+    assert!(stored_matches_sent(&sent, &stored));
+
+    let different_marks =
+        json!({ "type": "doc", "content": [para(json!([plain("a b"), plain("cd")]))]});
+    assert!(
+        !stored_matches_sent(&sent, &different_marks),
+        "joining must not erase a mark boundary"
+    );
+    let different_text =
+        json!({ "type": "doc", "content": [para(json!([plain("a  b"), text("cd", bold)]))]});
+    assert!(!stored_matches_sent(&sent, &different_text));
+}

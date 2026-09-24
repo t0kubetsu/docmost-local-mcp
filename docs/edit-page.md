@@ -28,6 +28,7 @@ each to the result of the previous one. If any operation does not apply, nothing
 | `replace_text` | `find`, `replace` | Replace a span inside one block (paragraph, heading, code block, table cell), or a whole table row given as `\| a \| b \|` (an empty `replace` deletes the row). |
 | `insert_blocks` | `anchor`, `position` (`before`/`after`), `markdown` | Insert Markdown blocks next to the top-level block that contains `anchor`. |
 | `append_table_row` | `anchor`, `row` | Insert rows (one per line) after the table row that contains `anchor`. |
+| `merge_table_rows` | `rows` (two or more anchors) | Merge adjacent rows of one table into the first, on the JSON: its cells stay, and the other rows' last-cell content is appended with one space, marks included. |
 
 Rules the transform enforces:
 
@@ -58,8 +59,9 @@ Rules the transform enforces:
    refused if `updatedAt` changed. A write without `expected_updated_at` is refused.
 3. After the write the page is re-fetched and compared with the document that was sent. The
    server adds default attributes to new nodes (block `indent`, link `rel`/`target`/`class`/
-   `title`/`internal`, an empty mark `attrs`); the comparison accepts extra `attrs` keys only,
-   so any other difference (text, marks, an added block) is reported as a warning.
+   `title`/`internal`, an empty mark `attrs`) and joins adjacent text nodes that carry the same
+   marks; the comparison accepts those two differences only, so any other difference (text,
+   marks, an added block) is reported as a warning.
 
 How the write reaches the page (Docmost source, v0.95.0,
 `collaboration/collaboration.handler.ts`): `POST /api/pages/update` with

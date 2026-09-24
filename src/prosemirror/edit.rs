@@ -56,6 +56,7 @@ pub fn apply_edits(doc: &Value, operations: &[EditOperation]) -> Result<EditOutc
                 position,
                 markdown,
             } => insert_blocks(&mut edited, anchor, *position, markdown),
+            EditOperation::MergeTableRows { rows } => merge_table_rows(&mut edited, rows),
             EditOperation::AppendTableRow { anchor, row } => {
                 append_table_row(&mut edited, anchor, row)
             }
@@ -418,26 +419,7 @@ fn insert_blocks(
 }
 
 fn append_table_row(doc: &mut Value, anchor: &str, row: &str) -> Result<EditChange> {
-    if anchor.is_empty() {
-        bail!("`anchor` is empty");
-    }
-    let hits: Vec<String> = walk(doc)
-        .into_iter()
-        .filter(|(_, node)| node_type(node) == Some("tableRow"))
-        .flat_map(|(pointer, node)| {
-            find_all(&row_markdown(node), anchor)
-                .into_iter()
-                .map(move |_| pointer.clone())
-        })
-        .collect();
-    if hits.len() != 1 {
-        bail!(
-            "`anchor` matches {} times in table rows, expected exactly 1: {}",
-            hits.len(),
-            preview(anchor)
-        );
-    }
-    let pointer = &hits[0];
+    let pointer = &unique_row(doc, anchor)?;
     let template = doc.pointer(pointer).cloned().unwrap_or(Value::Null);
     let rows = build_rows(&template, row, true)?;
     let after = rows.iter().map(row_markdown).collect::<Vec<_>>().join("\n");
@@ -450,6 +432,86 @@ fn append_table_row(doc: &mut Value, anchor: &str, row: &str) -> Result<EditChan
         before: String::new(),
         after,
     })
+}
+
+fn merge_table_rows(doc: &mut Value, anchors: &[String]) -> Result<EditChange> {
+    if anchors.len() < 2 {
+        bail!("`rows` needs at least two rows");
+    }
+    let pointers = anchors
+        .iter()
+        .map(|anchor| unique_row(doc, anchor))
+        .collect::<Result<Vec<_>>>()?;
+    let split: Vec<(&str, usize)> = pointers
+        .iter()
+        .map(|pointer| {
+            let (parent, index) = pointer.rsplit_once('/').expect("child pointer");
+            (parent, index.parse().expect("numeric index"))
+        })
+        .collect();
+    let (parent, first) = split[0];
+    if split
+        .iter()
+        .enumerate()
+        .any(|(offset, (p, index))| *p != parent || *index != first + offset)
+    {
+        bail!("`rows` must name adjacent rows of one table, in order");
+    }
+    let rows: Vec<Value> = pointers
+        .iter()
+        .map(|p| doc.pointer(p).cloned().unwrap_or(Value::Null))
+        .collect();
+    let before = rows.iter().map(row_markdown).collect::<Vec<_>>().join("\n");
+    let mut inline = Vec::new();
+    for (offset, row) in rows.iter().enumerate() {
+        let paragraph = match children(row).last().map(children) {
+            Some([paragraph]) if node_type(paragraph) == Some("paragraph") => paragraph,
+            _ => bail!(
+                "the last cell of row {} is not a single paragraph",
+                anchors[offset]
+            ),
+        };
+        if offset > 0 {
+            inline.push(json!({ "type": "text", "text": " " }));
+        }
+        inline.extend(children(paragraph).iter().cloned());
+    }
+    let mut merged = rows[0].clone();
+    let last = children(&merged).len() - 1;
+    merged["content"][last]["content"][0]["content"] = Value::Array(inline);
+    let after = row_markdown(&merged);
+    if let Some(siblings) = doc.pointer_mut(parent).and_then(Value::as_array_mut) {
+        siblings.splice(first..first + rows.len(), [merged]);
+    }
+    Ok(EditChange {
+        description: format!("merge_table_rows: {} rows at {}", rows.len(), pointers[0]),
+        before,
+        after,
+    })
+}
+
+/// The pointer of the one table row whose Markdown contains `anchor`.
+fn unique_row(doc: &Value, anchor: &str) -> Result<String> {
+    if anchor.is_empty() {
+        bail!("`anchor` is empty");
+    }
+    let hits: Vec<String> = walk(doc)
+        .into_iter()
+        .filter(|(_, node)| node_type(node) == Some("tableRow"))
+        .flat_map(|(pointer, node)| {
+            find_all(&row_markdown(node), anchor)
+                .into_iter()
+                .map(move |_| pointer.clone())
+        })
+        .collect();
+    match hits.as_slice() {
+        [pointer] => Ok(pointer.clone()),
+        _ => bail!(
+            "`anchor` matches {} times in table rows, expected exactly 1: {}",
+            hits.len(),
+            preview(anchor)
+        ),
+    }
 }
 
 /// Build rows from Markdown lines, shaped like `template` (cell types and attrs). Without
@@ -622,8 +684,30 @@ fn children(node: &Value) -> &[Value] {
         .unwrap_or(&[])
 }
 
+/// Adjacent text nodes with the same marks, joined (the server stores them joined).
+fn join_text_runs(nodes: &[Value]) -> Vec<Value> {
+    let mut joined: Vec<Value> = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        if let Some(last) = joined.last_mut() {
+            let both_text = node_type(last) == Some("text") && node_type(node) == Some("text");
+            if both_text && marks_of(last) == marks_of(node) {
+                let text = format!(
+                    "{}{}",
+                    last["text"].as_str().unwrap_or(""),
+                    node["text"].as_str().unwrap_or("")
+                );
+                last["text"] = Value::String(text);
+                continue;
+            }
+        }
+        joined.push(node.clone());
+    }
+    joined
+}
+
 /// Whether the stored document is what was sent, allowing only the `attrs` keys the server
-/// adds as defaults (measured: block `indent`, link `rel`/`target`/…, empty mark `attrs`).
+/// adds as defaults (measured: block `indent`, link `rel`/`target`/…, empty mark `attrs`), and
+/// adjacent text nodes with the same marks joined into one.
 /// Every text, type, mark, child and attr value that was sent must be equal.
 pub fn stored_matches_sent(sent: &Value, stored: &Value) -> bool {
     match (sent, stored) {
@@ -649,10 +733,11 @@ pub fn stored_matches_sent(sent: &Value, stored: &Value) -> bool {
                     })
         }
         (Value::Array(sent), Value::Array(stored)) => {
+            let (sent, stored) = (join_text_runs(sent), join_text_runs(stored));
             sent.len() == stored.len()
                 && sent
                     .iter()
-                    .zip(stored)
+                    .zip(&stored)
                     .all(|(a, b)| stored_matches_sent(a, b))
         }
         _ => sent == stored,
